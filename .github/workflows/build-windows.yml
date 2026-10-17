@@ -51,6 +51,7 @@ jobs:
             "--clean",
             "--windowed",
             "--name", "Game Roulette",
+            "--icon", "Game-Roulette-Windows-Package/game_roulette_icon.ico",
             "--collect-all", "PySide6",
             $env:APP_SCRIPT
           )
