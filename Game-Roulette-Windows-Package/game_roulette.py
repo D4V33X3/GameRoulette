@@ -145,6 +145,27 @@ def launcher_games(selected):
                         add(lnk.stem,lnk,launcher)
     return sorted(found,key=lambda g:g.title.casefold())
 
+def steam_owned_games(api_key, steam_id):
+    """Fetch games from a public Steam profile using the official Steam Web API."""
+    from urllib.parse import urlencode
+    query = urlencode({
+        "key": api_key.strip(),
+        "steamid": steam_id.strip(),
+        "include_appinfo": 1,
+        "include_played_free_games": 1,
+        "format": "json",
+    })
+    url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?" + query
+    req = Request(url, headers={"User-Agent": "GameRoulette/1.0"})
+    with urlopen(req, timeout=20) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    games = payload.get("response", {}).get("games", [])
+    if not games:
+        raise ValueError("Steam returned no games. Make sure the profile's Game details privacy is Public and the Steam ID/API key are correct.")
+    return [Game(Path("Steam library (not installed)"), title=item.get("name", "").strip(), source="Steam library (not installed)")
+            for item in games if item.get("name", "").strip()]
+
+
 def local_covers(folder):
     out = {}
     if not folder: return out
@@ -281,7 +302,7 @@ from PySide6.QtCore import Qt, QTimer, QRectF, QPointF, Signal, QObject
 from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QPixmap, QRadialGradient, QIcon
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
     QListWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFileDialog, QComboBox, QColorDialog,
-    QSlider, QDialog, QDialogButtonBox, QProgressBar, QMessageBox, QGraphicsDropShadowEffect, QStyle, QSizePolicy, QCheckBox)
+    QSlider, QDialog, QDialogButtonBox, QProgressBar, QMessageBox, QGraphicsDropShadowEffect, QStyle, QSizePolicy, QCheckBox, QLineEdit)
 import sys
 
 class Signals(QObject):
@@ -382,7 +403,7 @@ class MainWindow(QMainWindow):
         self.wtitle=QLabel('Spin to pick a game'); self.wtitle.setWordWrap(True); self.wtitle.setObjectName('winnerTitle'); v.addWidget(self.wtitle)
         self.wpath=QLabel('Winner appears here'); self.wpath.setWordWrap(True); self.wpath.setObjectName('muted'); v.addWidget(self.wpath)
         self.spinbtn=QPushButton('▶  SPIN THE WHEEL'); self.spinbtn.setObjectName('spin'); self.spinbtn.clicked.connect(self.spin); v.addWidget(self.spinbtn); self.showbtn=QPushButton('Show Game File Location'); self.showbtn.setEnabled(False); self.showbtn.clicked.connect(self.show_location); v.addWidget(self.showbtn); side.addWidget(winner)
-        lib=self.panel(); lv=QVBoxLayout(lib); lv.addWidget(QLabel('YOUR GAME LIBRARY',objectName='sectionTitle')); self.list=QListWidget(); self.list.currentRowChanged.connect(self.select_game); lv.addWidget(self.list,1); self.removebtn=QPushButton('✕ Remove Selected Game'); self.removebtn.setEnabled(False); self.removebtn.clicked.connect(self.remove_selected_game); lv.addWidget(self.removebtn); side.addWidget(lib,1)
+        lib=self.panel(); lv=QVBoxLayout(lib); lv.addWidget(QLabel('YOUR GAME LIBRARY',objectName='sectionTitle')); self.list=QListWidget(); self.list.currentRowChanged.connect(self.select_game); lv.addWidget(self.list,1); self.removebtn=QPushButton('✕ Remove Selected Game'); self.removebtn.setEnabled(False); self.removebtn.clicked.connect(self.remove_selected_game); lv.addWidget(self.removebtn); self.removeallbtn=QPushButton('⌫ Remove All Games'); self.removeallbtn.setEnabled(False); self.removeallbtn.clicked.connect(self.remove_all_games); lv.addWidget(self.removeallbtn); side.addWidget(lib,1)
         foot=QLabel('LOCAL + ONLINE BOX ART   •   CUE/BIN PAIR DEDUPLICATION   •   YOU LAUNCH THE WINNER'); foot.setAlignment(Qt.AlignmentFlag.AlignCenter); foot.setObjectName('footer'); outer.addWidget(foot)
     def change_theme(self, name):
         presets={'Midnight Glass':'#36c5ff','Arctic Glass':'#8deaff','Emerald Glass':'#35e6a1','Violet Glass':'#b58aff','Sunset Glass':'#ff9a62','Rose Gold':'#ff7eb6'}
@@ -427,18 +448,40 @@ class MainWindow(QMainWindow):
         p=QFileDialog.getExistingDirectory(self,'Choose ROM folder')
         if p and Path(p) not in self.folders: self.folders.append(Path(p)); self.set_status(f'{len(self.folders)} ROM folder(s) selected.')
     def import_launchers(self):
-        # This is deliberately opt-in: no launcher folders are scanned until the user confirms here.
-        d=QDialog(self); d.setWindowTitle('Import games from launchers'); d.setMinimumWidth(360)
-        lay=QVBoxLayout(d); lay.addWidget(QLabel('Choose which launchers to check for installed games. Nothing is scanned unless you click Import.'))
+        # Explicit opt-in only: no launcher or online account is accessed automatically.
+        d=QDialog(self); d.setWindowTitle('Import games from launchers'); d.setMinimumWidth(440)
+        lay=QVBoxLayout(d)
+        lay.addWidget(QLabel('Choose which launchers to check. Installed games are detected locally. To include uninstalled games, Steam supports importing a public profile using your Steam Web API key.'))
         checks={}
         for name in ['Steam','Epic Games','GOG Galaxy','Ubisoft Connect','EA app','Xbox app']:
             cb=QCheckBox(name); cb.setChecked(name in ('Steam','Epic Games')); checks[name]=cb; lay.addWidget(cb)
+        cloud=QCheckBox('Include games in my Steam account even if not installed')
+        lay.addWidget(cloud)
+        lay.addWidget(QLabel('Steam Web API key (required for online Steam library):'))
+        api_key=QLineEdit(); api_key.setPlaceholderText('Paste your Steam Web API key'); api_key.setEchoMode(QLineEdit.EchoMode.Password); lay.addWidget(api_key)
+        lay.addWidget(QLabel('SteamID64 (17-digit Steam ID; profile Game details must be Public):'))
+        steam_id=QLineEdit(); steam_id.setPlaceholderText('e.g. 7656119…'); lay.addWidget(steam_id)
+        help_label=QLabel('Get an API key at steamcommunity.com/dev/apikey. Your key is used for this request only and is not saved by Game Roulette.')
+        help_label.setWordWrap(True); help_label.setObjectName('muted'); lay.addWidget(help_label)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel); buttons.button(QDialogButtonBox.StandardButton.Ok).setText('Import selected'); buttons.accepted.connect(d.accept); buttons.rejected.connect(d.reject); lay.addWidget(buttons)
         if d.exec()!=QDialog.DialogCode.Accepted: return
         selected=[name for name,cb in checks.items() if cb.isChecked()]
         if not selected: QMessageBox.information(self,'No launchers selected','Choose at least one launcher to import.'); return
         found=launcher_games(selected)
-        existing={g.title.casefold() for g in self.games}; added=[g for g in found if g.title.casefold() not in existing]
+        if cloud.isChecked():
+            if not api_key.text().strip() or not re.fullmatch(r'\d{17}', steam_id.text().strip()):
+                QMessageBox.warning(self,'Steam details needed','Enter a Steam Web API key and your 17-digit SteamID64 to import your online Steam library.')
+                return
+            try:
+                found.extend(steam_owned_games(api_key.text(), steam_id.text()))
+            except Exception as exc:
+                QMessageBox.warning(self,'Steam library could not be loaded',f'{exc}\n\nCheck your API key, SteamID64, internet connection, and that Game details are public.')
+                return
+        # Merge by normalized title so installed and uninstalled copies don't duplicate.
+        existing={g.title.casefold() for g in self.games}; added=[]
+        for g in found:
+            if g.title.casefold() not in existing:
+                added.append(g); existing.add(g.title.casefold())
         self.games.extend(added); self.games.sort(key=lambda g:g.title.casefold()); self.refresh(); self.draw()
         if added:
             self.busy=True; self.spinbtn.setEnabled(False)
@@ -446,7 +489,7 @@ class MainWindow(QMainWindow):
             threading.Thread(target=self.download_launcher_covers, args=(added,), daemon=True).start()
         else:
             self.set_status(f'Launcher import complete: no new games added from {", ".join(selected)}.')
-        if not found: QMessageBox.information(self,'No installed games found','No installed games were found for the selected launchers. Some launchers store their library differently, and this scan does not include uninstalled games in online accounts.')
+        if not found: QMessageBox.information(self,'No games found','No games were found for the selected launchers. Other launchers currently show locally detected/installed games only; online account-library imports are not available for them in this version.')
 
     def download_launcher_covers(self, games):
         good=bad=0
@@ -492,7 +535,7 @@ class MainWindow(QMainWindow):
     def refresh(self):
         self.list.blockSignals(True); self.list.clear()
         for g in self.games: self.list.addItem(('▣ ' if find_cover(g,self.covers) else '• ')+g.title)
-        self.list.blockSignals(False); self.removebtn.setEnabled(False); self.spinbtn.setEnabled(bool(self.games) and not self.busy)
+        self.list.blockSignals(False); self.removebtn.setEnabled(False); self.removeallbtn.setEnabled(bool(self.games) and not self.busy); self.spinbtn.setEnabled(bool(self.games) and not self.busy)
     def draw(self): self.wheel.games=self.games; self.wheel.covers=self.covers; self.wheel.angle=self.angle; self.wheel.glow=self.glow_color; self.wheel.update()
     def select_game(self,index):
         if 0<=index<len(self.games) and not self.busy: self.show_game(self.games[index]); self.showbtn.setEnabled(True); self.removebtn.setEnabled(True)
@@ -500,6 +543,14 @@ class MainWindow(QMainWindow):
         idx=self.list.currentRow()
         if self.busy or idx<0:return
         g=self.games.pop(idx); self.winner=None; self.cover.setPixmap(QPixmap()); self.cover.setText('COVER ART'); self.wtitle.setText('Spin to pick a game' if self.games else 'No games on the wheel'); self.wpath.setText('Winner appears here'); self.refresh(); self.draw(); self.set_status(f'Removed {g.title} from this session. ROM file not deleted.')
+    def remove_all_games(self):
+        if self.busy or not self.games: return
+        answer=QMessageBox.question(self,'Remove all games?',f'Remove all {len(self.games)} games from the current Game Roulette list?\n\nYour ROM files and installed games will not be deleted.',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes: return
+        count=len(self.games); self.games.clear(); self.winner=None
+        self.cover.setPixmap(QPixmap()); self.cover.setText('COVER ART')
+        self.wtitle.setText('No games on the wheel'); self.wpath.setText('Winner appears here'); self.showbtn.setEnabled(False)
+        self.refresh(); self.draw(); self.set_status(f'Removed all {count} games from this session. Files were not deleted.')
     def show_game(self,g):
         self.winner=g; p=find_cover(g,self.covers); self.cover.setPixmap(QPixmap(str(p)).scaled(210,210,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation) if p else QPixmap()); self.cover.setText('' if p else 'NO COVER FOUND'); self.wtitle.setText(g.title); self.wpath.setText((f'{g.source} • ' if getattr(g,'source','ROM') != 'ROM' else '') + str(g.path))
     def spin(self):
