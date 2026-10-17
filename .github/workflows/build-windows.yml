@@ -1,4 +1,5 @@
 
+
 name: Build Game Roulette
 
 on:
@@ -16,10 +17,10 @@ jobs:
 
     steps:
       - name: Download repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -46,15 +47,22 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: |
+          $iconPath = "Game-Roulette-Windows-Package/game_roulette_icon.ico"
+
+          if (-not (Test-Path $iconPath)) {
+            throw "Icon file not found: $iconPath"
+          }
+
           $args = @(
             "--noconfirm",
             "--clean",
             "--windowed",
             "--name", "Game Roulette",
-            "--icon", "Game-Roulette-Windows-Package/game_roulette_icon.ico",
+            "--icon", $iconPath,
             "--collect-all", "PySide6",
             $env:APP_SCRIPT
           )
+
           python -m PyInstaller @args
 
       - name: Package Windows app
@@ -66,7 +74,7 @@ jobs:
             -Force
 
       - name: Upload downloadable app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Game-Roulette-Windows
           path: Game-Roulette-Windows.zip
@@ -77,3 +85,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: Game-Roulette-Windows.zip
+
