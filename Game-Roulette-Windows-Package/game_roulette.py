@@ -302,7 +302,7 @@ from PySide6.QtCore import Qt, QTimer, QRectF, QPointF, Signal, QObject
 from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QPixmap, QRadialGradient, QIcon
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
     QListWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFileDialog, QComboBox, QColorDialog,
-    QSlider, QDialog, QDialogButtonBox, QProgressBar, QMessageBox, QGraphicsDropShadowEffect, QStyle, QSizePolicy, QCheckBox, QLineEdit)
+    QSlider, QDialog, QDialogButtonBox, QProgressBar, QMessageBox, QGraphicsDropShadowEffect, QStyle, QSizePolicy, QCheckBox, QLineEdit, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QSpinBox, QDateEdit, QFormLayout, QInputDialog, QHeaderView)
 import sys
 
 class Signals(QObject):
@@ -363,7 +363,7 @@ class MainWindow(QMainWindow):
         try:
             cfg=json.loads(self.settings_path.read_text()); self.glow_color=cfg.get('glow_color',self.glow_color); self.glow_strength=int(cfg.get('glow_strength',3)); self.theme_name=cfg.get('theme_name','Midnight Glass')
         except Exception: pass
-        self.folders=[]; self.coverfolder=None; self.pcsx2folder=Path(r'G:\PCSX2\covers'); self.games=[]; self.covers={}; self.winner=None; self.busy=False; self.angle=0; self.downloader=CoverDownloader(); self.signals=Signals(); self.signals.status.connect(self.set_status); self.signals.finished.connect(self.finish_download)
+        self.folders=[]; self.coverfolder=None; self.pcsx2folder=Path(r'G:\PCSX2\covers'); self.games=[]; self.covers={}; self.winner=None; self.busy=False; self.angle=0; self.downloader=CoverDownloader(); self.library_path=Path.home()/'.rom_roulette'/'library.json'; self.game_meta={}; self.selected_backlog_key=None; self.load_library_data(); self.signals=Signals(); self.signals.status.connect(self.set_status); self.signals.finished.connect(self.finish_download)
         self.build(); self.apply_theme()
     def toggle_maximize(self):
         if self.isMaximized(): self.showNormal(); self.maxbtn.setText('□')
@@ -384,18 +384,41 @@ class MainWindow(QMainWindow):
     def build(self):
         root=QWidget(); root.setObjectName('root'); self.setCentralWidget(root); outer=QVBoxLayout(root); outer.setContentsMargins(1,1,1,1); outer.setSpacing(0)
         titlebar=QFrame(); titlebar.setObjectName('titleBar'); titlebar.setFixedHeight(42); tb=QHBoxLayout(titlebar); tb.setContentsMargins(14,0,8,0); tb.setSpacing(8)
-        appmark=QLabel('◈'); appmark.setObjectName('titleMark'); tb.addWidget(appmark); wintitle=QLabel('GAME ROULETTE  /  GLASS EDITION'); wintitle.setObjectName('windowTitle'); tb.addWidget(wintitle); tb.addStretch()
+        appmark=QLabel('◈'); appmark.setObjectName('titleMark'); tb.addWidget(appmark); wintitle=QLabel('GAME ROULETTE  /  GAMING HUB'); wintitle.setObjectName('windowTitle'); tb.addWidget(wintitle); tb.addStretch()
         self.minbtn=QPushButton('—'); self.minbtn.setObjectName('windowControl'); self.minbtn.setFixedSize(42,30); self.minbtn.clicked.connect(self.showMinimized); tb.addWidget(self.minbtn)
         self.maxbtn=QPushButton('□'); self.maxbtn.setObjectName('windowControl'); self.maxbtn.setFixedSize(42,30); self.maxbtn.clicked.connect(self.toggle_maximize); tb.addWidget(self.maxbtn)
         self.closebtn=QPushButton('×'); self.closebtn.setObjectName('windowClose'); self.closebtn.setFixedSize(42,30); self.closebtn.clicked.connect(self.close); tb.addWidget(self.closebtn); outer.addWidget(titlebar)
-        contentroot=QWidget(); contentroot.setObjectName('contentRoot'); outer.addWidget(contentroot,1); outer=QVBoxLayout(contentroot); outer.setContentsMargins(25,20,25,16); outer.setSpacing(15)
-        header=QHBoxLayout(); brand=QVBoxLayout(); title=QLabel('GAME ROULETTE'); title.setObjectName('hero'); brand.addWidget(title); sub=QLabel('YOUR LIBRARY. ONE SPIN. ONTO THE NEXT ADVENTURE.'); sub.setObjectName('subtitle'); brand.addWidget(sub); header.addLayout(brand); header.addStretch(); outer.addLayout(header)
-        toolbar=self.panel(); row=QHBoxLayout(toolbar); row.setContentsMargins(14,12,14,12); row.setSpacing(9)
+        contentroot=QWidget(); contentroot.setObjectName('contentRoot'); outer.addWidget(contentroot,1); main=QVBoxLayout(contentroot); main.setContentsMargins(22,16,22,14); main.setSpacing(10)
+        header=QHBoxLayout(); brand=QVBoxLayout(); title=QLabel('GAME ROULETTE'); title.setObjectName('hero'); brand.addWidget(title); sub=QLabel('YOUR LIBRARY. YOUR BACKLOG. YOUR NEXT ADVENTURE.'); sub.setObjectName('subtitle'); brand.addWidget(sub); header.addLayout(brand); header.addStretch(); main.addLayout(header)
+        toolbar=self.panel(); row=QHBoxLayout(toolbar); row.setContentsMargins(12,9,12,9); row.setSpacing(8)
         for text,fn in [('＋ Add ROM Folder',self.add_folder),('Import Launcher Games…',self.import_launchers),('Choose Local Covers',self.choose_covers),('Scan Library',self.scan)]:
             b=QPushButton(text); b.clicked.connect(fn); row.addWidget(b)
-        row.addWidget(QLabel('Theme:')); self.theme=QComboBox(); self.theme.addItems(['Midnight Glass','Arctic Glass','Emerald Glass','Violet Glass','Sunset Glass','Rose Gold']); self.theme.setCurrentText(self.theme_name); self.theme.currentTextChanged.connect(self.change_theme); row.addWidget(self.theme); row.addWidget(QLabel('Online system:')); self.system=QComboBox(); self.system.addItems(SYSTEMS); row.addWidget(self.system,1); outer.addWidget(toolbar)
-        self.status=QLabel('Choose ROM folders, then scan. Online covers need an internet connection.'); self.status.setObjectName('status'); outer.addWidget(self.status)
-        content=QHBoxLayout(); content.setSpacing(16); outer.addLayout(content,1)
+        row.addWidget(QLabel('Theme:')); self.theme=QComboBox(); self.theme.addItems(['Midnight Glass','Arctic Glass','Emerald Glass','Violet Glass','Sunset Glass','Rose Gold']); self.theme.setCurrentText(self.theme_name); self.theme.currentTextChanged.connect(self.change_theme); row.addWidget(self.theme)
+        main.addWidget(toolbar)
+        self.status=QLabel('Welcome to Game Roulette. Import or scan games to get started.'); self.status.setObjectName('status'); main.addWidget(self.status)
+        self.tabs=QTabWidget(); self.tabs.setObjectName('mainTabs'); main.addWidget(self.tabs,1)
+        self.build_dashboard_page(); self.build_library_page(); self.build_roulette_page(); self.build_backlog_page(); self.build_progress_page(); self.build_collections_page(); self.build_settings_page()
+        foot=QLabel('LOCAL GAME DATA  •  CUE/BIN PAIR DEDUPLICATION  •  YOUR COLLECTION STAYS ON THIS PC'); foot.setAlignment(Qt.AlignmentFlag.AlignCenter); foot.setObjectName('footer'); main.addWidget(foot)
+
+    def build_dashboard_page(self):
+        page=QWidget(); lay=QVBoxLayout(page); lay.setSpacing(14)
+        heading=QLabel('Your Gaming Dashboard'); heading.setObjectName('sectionTitle'); lay.addWidget(heading)
+        cards=QGridLayout(); cards.setSpacing(12); self.dashboard_values={}
+        for i,(key,label) in enumerate([('total','Games in library'),('backlog','Backlog'),('playing','Currently playing'),('completed','Completed')]):
+            card=self.panel(); cv=QVBoxLayout(card); value=QLabel('0'); value.setObjectName('hero'); value.setAlignment(Qt.AlignmentFlag.AlignCenter); caption=QLabel(label); caption.setObjectName('subtitle'); caption.setAlignment(Qt.AlignmentFlag.AlignCenter); cv.addWidget(value); cv.addWidget(caption); cards.addWidget(card,i//2,i%2); self.dashboard_values[key]=value
+        lay.addLayout(cards)
+        self.dashboard_recent=QLabel('Recently added games will appear here.'); self.dashboard_recent.setWordWrap(True); self.dashboard_recent.setObjectName('muted'); lay.addWidget(self.dashboard_recent)
+        lay.addStretch(); self.tabs.addTab(page,'⌂  Dashboard')
+
+    def build_library_page(self):
+        page=QWidget(); lay=QVBoxLayout(page); top=QHBoxLayout(); label=QLabel('My Game Library'); label.setObjectName('sectionTitle'); top.addWidget(label); top.addStretch()
+        self.library_search=QLineEdit(); self.library_search.setPlaceholderText('Search games…'); self.library_search.textChanged.connect(self.refresh_library_page); self.library_search.setMaximumWidth(320); top.addWidget(self.library_search); lay.addLayout(top)
+        self.library_list=QListWidget(); self.library_list.currentRowChanged.connect(self.library_selected); lay.addWidget(self.library_list,1)
+        buttons=QHBoxLayout(); self.library_remove=QPushButton('Remove Selected'); self.library_remove.clicked.connect(self.remove_from_library); buttons.addWidget(self.library_remove); self.library_details=QPushButton('Edit Backlog Details'); self.library_details.clicked.connect(self.edit_selected_game); buttons.addWidget(self.library_details); buttons.addStretch(); lay.addLayout(buttons)
+        self.tabs.addTab(page,'▦  My Library')
+
+    def build_roulette_page(self):
+        page=QWidget(); content=QHBoxLayout(page); content.setSpacing(14)
         wheelpanel=self.panel(); wl=QVBoxLayout(wheelpanel); wh=QLabel('✦  THE GAME WHEEL  ✦'); wh.setObjectName('sectionTitle'); wh.setAlignment(Qt.AlignmentFlag.AlignCenter); wl.addWidget(wh); self.wheel=Wheel(); wl.addWidget(self.wheel,1); content.addWidget(wheelpanel,7)
         side=QVBoxLayout(); content.addLayout(side,3)
         winner=self.panel(); v=QVBoxLayout(winner); v.addWidget(QLabel('YOUR NEXT GAME',objectName='sectionTitle'))
@@ -403,11 +426,176 @@ class MainWindow(QMainWindow):
         self.wtitle=QLabel('Spin to pick a game'); self.wtitle.setWordWrap(True); self.wtitle.setObjectName('winnerTitle'); v.addWidget(self.wtitle)
         self.wpath=QLabel('Winner appears here'); self.wpath.setWordWrap(True); self.wpath.setObjectName('muted'); v.addWidget(self.wpath)
         self.spinbtn=QPushButton('▶  SPIN THE WHEEL'); self.spinbtn.setObjectName('spin'); self.spinbtn.clicked.connect(self.spin); v.addWidget(self.spinbtn); self.showbtn=QPushButton('Show Game File Location'); self.showbtn.setEnabled(False); self.showbtn.clicked.connect(self.show_location); v.addWidget(self.showbtn); side.addWidget(winner)
-        lib=self.panel(); lv=QVBoxLayout(lib); lv.addWidget(QLabel('YOUR GAME LIBRARY',objectName='sectionTitle')); self.list=QListWidget(); self.list.currentRowChanged.connect(self.select_game); lv.addWidget(self.list,1); self.removebtn=QPushButton('✕ Remove Selected Game'); self.removebtn.setEnabled(False); self.removebtn.clicked.connect(self.remove_selected_game); lv.addWidget(self.removebtn); self.removeallbtn=QPushButton('⌫ Remove All Games'); self.removeallbtn.setEnabled(False); self.removeallbtn.clicked.connect(self.remove_all_games); lv.addWidget(self.removeallbtn); side.addWidget(lib,1)
-        foot=QLabel('LOCAL + ONLINE BOX ART   •   CUE/BIN PAIR DEDUPLICATION   •   YOU LAUNCH THE WINNER'); foot.setAlignment(Qt.AlignmentFlag.AlignCenter); foot.setObjectName('footer'); outer.addWidget(foot)
+        lib=self.panel(); lv=QVBoxLayout(lib); lv.addWidget(QLabel('GAMES ON THE WHEEL',objectName='sectionTitle')); self.list=QListWidget(); self.list.currentRowChanged.connect(self.select_game); lv.addWidget(self.list,1); self.removebtn=QPushButton('✕ Remove Selected Game'); self.removebtn.setEnabled(False); self.removebtn.clicked.connect(self.remove_selected_game); lv.addWidget(self.removebtn); self.removeallbtn=QPushButton('⌫ Remove All Games'); self.removeallbtn.setEnabled(False); self.removeallbtn.clicked.connect(self.remove_all_games); lv.addWidget(self.removeallbtn); side.addWidget(lib,1)
+        self.tabs.addTab(page,'🎡  Roulette')
+
+    def build_backlog_page(self):
+        page=QWidget(); lay=QVBoxLayout(page); title=QLabel('Backlog & Completion Tracker'); title.setObjectName('sectionTitle'); lay.addWidget(title)
+        intro=QLabel('Select a game to update its status, rating, notes and completion date. Changes are saved locally.'); intro.setWordWrap(True); intro.setObjectName('muted'); lay.addWidget(intro)
+        self.backlog_table=QTableWidget(0,5); self.backlog_table.setHorizontalHeaderLabels(['Game','Status','Rating','Completed','Collections']); self.backlog_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.backlog_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection); self.backlog_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.backlog_table.verticalHeader().setVisible(False); self.backlog_table.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch); self.backlog_table.setColumnWidth(1,150); self.backlog_table.setColumnWidth(2,75); self.backlog_table.setColumnWidth(3,110); self.backlog_table.itemSelectionChanged.connect(self.load_backlog_editor); lay.addWidget(self.backlog_table,3)
+        form=QFormLayout(); self.backlog_status=QComboBox(); self.backlog_status.addItems(['Backlog','Playing','Completed','100% Completed','Abandoned']); form.addRow('Status',self.backlog_status)
+        self.backlog_rating=QSpinBox(); self.backlog_rating.setRange(0,10); self.backlog_rating.setSpecialValueText('Not rated'); form.addRow('Rating (0–10)',self.backlog_rating)
+        self.backlog_date=QDateEdit(); self.backlog_date.setCalendarPopup(True); self.backlog_date.setDisplayFormat('yyyy-MM-dd'); self.backlog_date.setDate(__import__('PySide6.QtCore',fromlist=['QDate']).QDate.currentDate()); form.addRow('Completion date',self.backlog_date)
+        self.backlog_notes=QTextEdit(); self.backlog_notes.setPlaceholderText('Your notes, progress, thoughts or next steps…'); self.backlog_notes.setMaximumHeight(90); form.addRow('Notes',self.backlog_notes)
+        self.backlog_collections=QLineEdit(); self.backlog_collections.setPlaceholderText('e.g. Horror, Games to Stream, PS2 Classics'); form.addRow('Collections (comma separated)',self.backlog_collections); lay.addLayout(form)
+        save=QPushButton('Save Game Details'); save.clicked.connect(self.save_backlog_editor); lay.addWidget(save)
+        self.tabs.addTab(page,'▤  Backlog')
+
+    def build_progress_page(self):
+        page=QWidget(); lay=QVBoxLayout(page); title=QLabel('Progress & Personal Achievements'); title.setObjectName('sectionTitle'); lay.addWidget(title)
+        self.progress_summary=QLabel('Your progress statistics will appear here.'); self.progress_summary.setWordWrap(True); self.progress_summary.setObjectName('muted'); lay.addWidget(self.progress_summary)
+        self.progress_bar=QProgressBar(); self.progress_bar.setRange(0,100); lay.addWidget(self.progress_bar)
+        self.progress_tip=QLabel('Personal achievements are based on your own tracking, not external platform achievements.'); self.progress_tip.setWordWrap(True); self.progress_tip.setObjectName('muted'); lay.addWidget(self.progress_tip); lay.addStretch(); self.tabs.addTab(page,'🏆  Progress')
+
+    def build_collections_page(self):
+        page=QWidget(); lay=QVBoxLayout(page); title=QLabel('Collections'); title.setObjectName('sectionTitle'); lay.addWidget(title)
+        lay.addWidget(QLabel('Create collections by entering their names in a game’s Backlog details, separated by commas. This page shows the collections already used in your library.'))
+        self.collections_list=QListWidget(); lay.addWidget(self.collections_list,1); self.tabs.addTab(page,'▣  Collections')
+
+    def build_settings_page(self):
+        page=QWidget(); lay=QVBoxLayout(page); title=QLabel('Settings'); title.setObjectName('sectionTitle'); lay.addWidget(title)
+        lay.addWidget(QLabel('Appearance'))
+        row=QHBoxLayout(); row.addWidget(QLabel('Theme')); self.settings_theme=QComboBox(); self.settings_theme.addItems(['Midnight Glass','Arctic Glass','Emerald Glass','Violet Glass','Sunset Glass','Rose Gold']); self.settings_theme.setCurrentText(self.theme_name); self.settings_theme.currentTextChanged.connect(self.theme.setCurrentText); row.addWidget(self.settings_theme); lay.addLayout(row)
+        self.custom_glow_btn=QPushButton('Customise Glow Colour & Intensity'); self.custom_glow_btn.clicked.connect(self.customise_glow); lay.addWidget(self.custom_glow_btn)
+        self.export_btn=QPushButton('Export Library Backup…'); self.export_btn.clicked.connect(self.export_library); lay.addWidget(self.export_btn)
+        self.import_backup_btn=QPushButton('Restore Library Backup…'); self.import_backup_btn.clicked.connect(self.import_library_backup); lay.addWidget(self.import_backup_btn)
+        note=QLabel('Library metadata is stored locally in your user profile under .rom_roulette/library.json. Backups include game entries and their tracking details.'); note.setWordWrap(True); note.setObjectName('muted'); lay.addWidget(note); lay.addStretch(); self.tabs.addTab(page,'⚙  Settings')
+
+    def game_key(self, game):
+        path=str(game.path)
+        if path.startswith('Steam library (not installed)'):
+            return 'title:'+game.title.casefold()+'|'+getattr(game,'source','')
+        return 'path:'+path.casefold()
+
+    def load_library_data(self):
+        self.library_path.parent.mkdir(parents=True,exist_ok=True)
+        try:
+            data=json.loads(self.library_path.read_text(encoding='utf-8'))
+            if isinstance(data,dict):
+                self.game_meta=data.get('metadata', data.get('games',{}))
+                # Load saved library entries as well as tracking metadata.
+                for item in data.get('entries',[]):
+                    try:
+                        game=Game(item.get('path',''),title=item.get('title'),source=item.get('source','ROM'))
+                        if item.get('path') and not any(self.game_key(g)==self.game_key(game) for g in self.games):
+                            self.games.append(game)
+                    except Exception: pass
+                self.games.sort(key=lambda g:g.title.casefold())
+            else: self.game_meta={}
+        except (OSError,ValueError): self.game_meta={}
+
+    def save_library_data(self):
+        try:
+            self.library_path.parent.mkdir(parents=True,exist_ok=True)
+            payload={'version':1,'metadata':self.game_meta,'entries':[{'path':str(g.path),'title':g.title,'source':getattr(g,'source','ROM')} for g in self.games]}
+            temp=self.library_path.with_suffix('.tmp'); temp.write_text(json.dumps(payload,indent=2,ensure_ascii=False),encoding='utf-8'); temp.replace(self.library_path)
+        except OSError as exc: self.set_status(f'Could not save library data: {exc}')
+
+    def metadata(self, game):
+        key=self.game_key(game)
+        return self.game_meta.setdefault(key,{'status':'Backlog','rating':0,'notes':'','completed_date':'','collections':[]})
+
+    def update_all_pages(self):
+        if not hasattr(self,'tabs'): return
+        self.refresh_library_page(); self.refresh_backlog_page(); self.refresh_dashboard(); self.refresh_progress_page(); self.refresh_collections_page()
+
+    def refresh_library_page(self):
+        if not hasattr(self,'library_list'): return
+        query=self.library_search.text().casefold() if hasattr(self,'library_search') else ''
+        self.library_list.blockSignals(True); self.library_list.clear()
+        for g in self.games:
+            if query and query not in g.title.casefold(): continue
+            m=self.metadata(g); self.library_list.addItem(f'{g.title}   ·   {m.get("status","Backlog")}')
+        self.library_list.blockSignals(False)
+
+    def refresh_backlog_page(self):
+        if not hasattr(self,'backlog_table'): return
+        self.backlog_table.setRowCount(len(self.games))
+        for row,g in enumerate(sorted(self.games,key=lambda x:x.title.casefold())):
+            m=self.metadata(g); values=[g.title,m.get('status','Backlog'),('—' if not m.get('rating') else f"{m['rating']}/10"),m.get('completed_date','') or '—',', '.join(m.get('collections',[]))]
+            for col,value in enumerate(values):
+                item=QTableWidgetItem(value); item.setData(Qt.ItemDataRole.UserRole,self.game_key(g)); self.backlog_table.setItem(row,col,item)
+        self.backlog_table.resizeRowsToContents()
+
+    def load_backlog_editor(self):
+        rows=self.backlog_table.selectionModel().selectedRows()
+        if not rows: self.selected_backlog_key=None; return
+        key=self.backlog_table.item(rows[0].row(),0).data(Qt.ItemDataRole.UserRole); self.selected_backlog_key=key; m=self.game_meta.get(key,{})
+        self.backlog_status.setCurrentText(m.get('status','Backlog')); self.backlog_rating.setValue(int(m.get('rating',0) or 0)); self.backlog_notes.setPlainText(m.get('notes','')); self.backlog_collections.setText(', '.join(m.get('collections',[])))
+        from PySide6.QtCore import QDate
+        date=QDate.fromString(m.get('completed_date',''),'yyyy-MM-dd') if m.get('completed_date') else QDate.currentDate()
+        self.backlog_date.setDate(date if date.isValid() else QDate.currentDate())
+
+    def save_backlog_editor(self):
+        if not self.selected_backlog_key:
+            QMessageBox.information(self,'Select a game','Select a game in the backlog table first.'); return
+        m=self.game_meta.setdefault(self.selected_backlog_key,{'status':'Backlog','rating':0,'notes':'','completed_date':'','collections':[]})
+        m.update({'status':self.backlog_status.currentText(),'rating':self.backlog_rating.value(),'notes':self.backlog_notes.toPlainText().strip(),'collections':[x.strip() for x in self.backlog_collections.text().split(',') if x.strip()]})
+        m['completed_date']=self.backlog_date.date().toString('yyyy-MM-dd') if m['status'] in ('Completed','100% Completed') else ''
+        self.save_library_data(); self.update_all_pages(); self.set_status('Saved backlog details for '+self.selected_backlog_key.split('|')[0].replace('path:','').replace('title:',''))
+
+    def library_selected(self,row):
+        if row<0:return
+        query=self.library_search.text().casefold(); filtered=[g for g in self.games if not query or query in g.title.casefold()]
+        if row<len(filtered): self.show_game(filtered[row])
+
+    def remove_from_library(self):
+        row=self.library_list.currentRow()
+        if row<0:return
+        query=self.library_search.text().casefold(); filtered=[g for g in self.games if not query or query in g.title.casefold()]
+        if row<len(filtered):
+            game=filtered[row]; self.games=[g for g in self.games if self.game_key(g)!=self.game_key(game)]; self.save_library_data(); self.refresh(); self.draw(); self.update_all_pages(); self.set_status(f'Removed {game.title} from the current library. Source files were not deleted.')
+
+    def edit_selected_game(self):
+        row=self.library_list.currentRow(); query=self.library_search.text().casefold(); filtered=[g for g in self.games if not query or query in g.title.casefold()]
+        if row<0 or row>=len(filtered): return
+        key=self.game_key(filtered[row]);
+        for r in range(self.backlog_table.rowCount()):
+            if self.backlog_table.item(r,0).data(Qt.ItemDataRole.UserRole)==key:
+                self.tabs.setCurrentWidget(self.backlog_table.parentWidget()); self.backlog_table.selectRow(r); self.load_backlog_editor(); return
+
+    def refresh_dashboard(self):
+        if not hasattr(self,'dashboard_values'): return
+        counts={status:sum(1 for g in self.games if self.metadata(g).get('status','Backlog')==status) for status in ['Backlog','Playing','Completed','100% Completed','Abandoned']}
+        self.dashboard_values['total'].setText(str(len(self.games))); self.dashboard_values['backlog'].setText(str(counts['Backlog'])); self.dashboard_values['playing'].setText(str(counts['Playing'])); self.dashboard_values['completed'].setText(str(counts['Completed']+counts['100% Completed']))
+        self.dashboard_recent.setText('Recently added / available games:\n'+'\n'.join('• '+g.title for g in self.games[-5:]) if self.games else 'Import or scan games to populate your dashboard.')
+
+    def refresh_progress_page(self):
+        if not hasattr(self,'progress_summary'): return
+        total=len(self.games); completed=sum(1 for g in self.games if self.metadata(g).get('status') in ('Completed','100% Completed')); perfect=sum(1 for g in self.games if self.metadata(g).get('status')=='100% Completed'); playing=sum(1 for g in self.games if self.metadata(g).get('status')=='Playing'); abandoned=sum(1 for g in self.games if self.metadata(g).get('status')=='Abandoned'); pct=round(completed*100/total) if total else 0
+        self.progress_summary.setText(f'Total games: {total}\nCompleted: {completed}\n100% completed: {perfect}\nCurrently playing: {playing}\nAbandoned: {abandoned}\nCompletion rate: {pct}%')
+        self.progress_bar.setValue(pct)
+
+    def refresh_collections_page(self):
+        if not hasattr(self,'collections_list'): return
+        names={name for meta in self.game_meta.values() for name in meta.get('collections',[]) if name}
+        self.collections_list.clear()
+        for name in sorted(names,key=str.casefold):
+            count=sum(1 for g in self.games if name in self.metadata(g).get('collections',[])); self.collections_list.addItem(f'{name}  ·  {count} game(s)')
+
+    def export_library(self):
+        path,_=QFileDialog.getSaveFileName(self,'Export Game Roulette backup','game-roulette-backup.json','JSON files (*.json)')
+        if not path:return
+        try: Path(path).write_text(json.dumps({'version':1,'games':[{'path':str(g.path),'title':g.title,'source':g.source,'metadata':self.metadata(g)} for g in self.games]},indent=2,ensure_ascii=False),encoding='utf-8'); self.set_status('Library backup exported.')
+        except OSError as exc: QMessageBox.warning(self,'Export failed',str(exc))
+
+    def import_library_backup(self):
+        path,_=QFileDialog.getOpenFileName(self,'Restore Game Roulette backup','','JSON files (*.json)')
+        if not path:return
+        try:
+            data=json.loads(Path(path).read_text(encoding='utf-8')); imported=0
+            for item in data.get('games',[]):
+                game=Game(item.get('path',''),title=item.get('title'),source=item.get('source','ROM')); key=self.game_key(game)
+                self.game_meta[key]=item.get('metadata',{'status':'Backlog','rating':0,'notes':'','completed_date':'','collections':[]})
+                if not any(self.game_key(existing)==key for existing in self.games): self.games.append(game); imported+=1
+            self.games.sort(key=lambda g:g.title.casefold()); self.save_library_data(); self.refresh(); self.draw(); self.update_all_pages(); self.set_status(f'Restored backup; {imported} new game(s) added.')
+        except (OSError,ValueError,TypeError) as exc: QMessageBox.warning(self,'Restore failed',str(exc))
+
     def change_theme(self, name):
         presets={'Midnight Glass':'#36c5ff','Arctic Glass':'#8deaff','Emerald Glass':'#35e6a1','Violet Glass':'#b58aff','Sunset Glass':'#ff9a62','Rose Gold':'#ff7eb6'}
         self.theme_name=name
+        if hasattr(self,'settings_theme') and self.settings_theme.currentText()!=name:
+            self.settings_theme.blockSignals(True); self.settings_theme.setCurrentText(name); self.settings_theme.blockSignals(False)
         # Theme presets set the accent; the custom glow picker can still override it.
         self.glow_color=presets.get(name, self.glow_color)
         self.apply_theme()
@@ -429,7 +617,7 @@ class MainWindow(QMainWindow):
         QPushButton#spin{{background:{c};color:#07111e;border:1px solid rgba(255,255,255,170);font-size:13pt;font-weight:900;padding:14px;border-radius:12px;}}
         QPushButton#spin:hover{{background:#f5fbff;color:#07111e;}} QPushButton:disabled{{color:#61728b;background:rgba(30,43,62,140);}}
         QComboBox{{background:rgba(16,28,45,210);color:#edf5ff;border:1px solid rgba(220,240,255,110);border-radius:8px;padding:8px;}} QComboBox QAbstractItemView{{background:#13233a;color:#edf5ff;selection-background-color:{c};}}
-        QListWidget{{background:rgba(7,14,27,170);color:#eaf2ff;border:1px solid rgba(220,240,255,65);border-radius:10px;padding:6px;}} QListWidget::item{{padding:8px;border-radius:6px;}} QListWidget::item:selected{{background:{c};color:#07111e;}}
+        QTabWidget::pane{{border:1px solid rgba(220,240,255,65);border-radius:12px;background:rgba(10,18,34,90);top:-1px;}} QTabBar::tab{{background:rgba(25,42,66,170);color:#a9bdd8;border:1px solid rgba(220,240,255,65);padding:11px 16px;margin-right:4px;border-top-left-radius:8px;border-top-right-radius:8px;font-weight:700;}} QTabBar::tab:selected{{background:{c};color:#07111e;border-color:{c};}} QTabBar::tab:hover{{border-color:{c};}} QTableWidget{{background:rgba(7,14,27,170);color:#eaf2ff;gridline-color:rgba(220,240,255,45);border:1px solid rgba(220,240,255,65);border-radius:10px;selection-background-color:{c};selection-color:#07111e;}} QHeaderView::section{{background:rgba(25,42,66,220);color:#eaf2ff;border:0;padding:8px;font-weight:700;}} QTextEdit,QLineEdit,QSpinBox,QDateEdit{{background:rgba(7,14,27,180);color:#edf5ff;border:1px solid rgba(220,240,255,80);border-radius:7px;padding:7px;}} QListWidget{{background:rgba(7,14,27,170);color:#eaf2ff;border:1px solid rgba(220,240,255,65);border-radius:10px;padding:6px;}} QListWidget::item{{padding:8px;border-radius:6px;}} QListWidget::item:selected{{background:{c};color:#07111e;}}
         QLabel#cover{{background:rgba(7,14,27,150);border:1px solid {c};border-radius:12px;color:#8ca6c8;}} QLabel#winnerTitle{{font-size:14pt;font-weight:800;color:#f4f8ff;}} QLabel#muted{{color:#9bb0ce;font-size:9pt;}}
         """)
         for w in self.findChildren(QFrame):
@@ -482,7 +670,7 @@ class MainWindow(QMainWindow):
         for g in found:
             if g.title.casefold() not in existing:
                 added.append(g); existing.add(g.title.casefold())
-        self.games.extend(added); self.games.sort(key=lambda g:g.title.casefold()); self.refresh(); self.draw()
+        self.games.extend(added); self.games.sort(key=lambda g:g.title.casefold()); self.refresh(); self.draw(); self.save_library_data()
         if added:
             self.busy=True; self.spinbtn.setEnabled(False)
             self.set_status(f'Imported {len(added)} games. Looking for cover art online…')
@@ -514,7 +702,7 @@ class MainWindow(QMainWindow):
     def scan(self):
         if self.busy:return
         if not self.folders: QMessageBox.information(self,'Choose folders','Click Add ROM Folder first.'); return
-        self.games=scan_games(self.folders); self.covers=local_covers(self.coverfolder)
+        scanned=scan_games(self.folders); existing={self.game_key(g) for g in self.games}; self.games.extend(g for g in scanned if self.game_key(g) not in existing); self.games.sort(key=lambda g:g.title.casefold()); self.covers=local_covers(self.coverfolder)
         for key,path in local_covers(self.pcsx2folder).items(): self.covers.setdefault(key,path)
         self.refresh(); self.draw()
         if not self.games: QMessageBox.warning(self,'No games','No supported game files found.'); return
@@ -536,18 +724,20 @@ class MainWindow(QMainWindow):
         self.list.blockSignals(True); self.list.clear()
         for g in self.games: self.list.addItem(('▣ ' if find_cover(g,self.covers) else '• ')+g.title)
         self.list.blockSignals(False); self.removebtn.setEnabled(False); self.removeallbtn.setEnabled(bool(self.games) and not self.busy); self.spinbtn.setEnabled(bool(self.games) and not self.busy)
+        for g in self.games: self.metadata(g)
+        self.save_library_data(); self.update_all_pages()
     def draw(self): self.wheel.games=self.games; self.wheel.covers=self.covers; self.wheel.angle=self.angle; self.wheel.glow=self.glow_color; self.wheel.update()
     def select_game(self,index):
         if 0<=index<len(self.games) and not self.busy: self.show_game(self.games[index]); self.showbtn.setEnabled(True); self.removebtn.setEnabled(True)
     def remove_selected_game(self):
         idx=self.list.currentRow()
         if self.busy or idx<0:return
-        g=self.games.pop(idx); self.winner=None; self.cover.setPixmap(QPixmap()); self.cover.setText('COVER ART'); self.wtitle.setText('Spin to pick a game' if self.games else 'No games on the wheel'); self.wpath.setText('Winner appears here'); self.refresh(); self.draw(); self.set_status(f'Removed {g.title} from this session. ROM file not deleted.')
+        g=self.games.pop(idx); self.game_meta.pop(self.game_key(g),None); self.save_library_data(); self.winner=None; self.cover.setPixmap(QPixmap()); self.cover.setText('COVER ART'); self.wtitle.setText('Spin to pick a game' if self.games else 'No games on the wheel'); self.wpath.setText('Winner appears here'); self.refresh(); self.draw(); self.set_status(f'Removed {g.title} from this session. ROM file not deleted.')
     def remove_all_games(self):
         if self.busy or not self.games: return
         answer=QMessageBox.question(self,'Remove all games?',f'Remove all {len(self.games)} games from the current Game Roulette list?\n\nYour ROM files and installed games will not be deleted.',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes: return
-        count=len(self.games); self.games.clear(); self.winner=None
+        count=len(self.games); self.games.clear(); self.game_meta.clear(); self.save_library_data(); self.winner=None
         self.cover.setPixmap(QPixmap()); self.cover.setText('COVER ART')
         self.wtitle.setText('No games on the wheel'); self.wpath.setText('Winner appears here'); self.showbtn.setEnabled(False)
         self.refresh(); self.draw(); self.set_status(f'Removed all {count} games from this session. Files were not deleted.')
